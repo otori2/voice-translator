@@ -6,6 +6,7 @@ interface Segment {
   start: number;
   end: number;
   text: string;
+  ja?: string;
 }
 
 export default function Home() {
@@ -30,20 +31,21 @@ export default function Home() {
       ? transcript.split(/(?<=[.!?])\s+/)
       : [];
   // 日本語訳をsegments数に必ず合わせて分割
-  const translationSentences = (() => {
-    if (!translation) return [];
-    let arr = translation.split(/(?<=[。！？])\s*/);
-    if (segments.length > 0) {
-      // 必ずsegments数に合わせる
-      if (arr.length < segments.length) {
-        arr = arr.concat(Array(segments.length - arr.length).fill(""));
-      } else if (arr.length > segments.length) {
-        arr = arr.slice(0, segments.length);
-      }
-      return arr;
-    }
-    return arr;
-  })();
+  const translationSentences = segments.length > 0
+    ? segments.map((s) => s.ja || "")
+    : (() => {
+        if (!translation) return [];
+        let arr = translation.split(/(?<=[。！？])\s*/);
+        if (segments.length > 0) {
+          if (arr.length < segments.length) {
+            arr = arr.concat(Array(segments.length - arr.length).fill(""));
+          } else if (arr.length > segments.length) {
+            arr = arr.slice(0, segments.length);
+          }
+          return arr;
+        }
+        return arr;
+      })();
 
   // 最大行数をsegments数または両配列の長い方に合わせる
   const maxLines = Math.max(transcriptSentences.length, translationSentences.length);
@@ -56,11 +58,11 @@ export default function Home() {
     }
   };
 
-  // 文字起こしテキストのダウンロード（TSV形式: start\tend\ttext）
+  // 文字起こしテキストのダウンロード（TSV形式: start\tend\ttext\tja）
   const handleDownload = () => {
     let content = '';
     if (segments.length > 0) {
-      content = segments.map(seg => `${seg.start}\t${seg.end}\t${seg.text}`).join('\n');
+      content = segments.map(seg => `${seg.start}\t${seg.end}\t${seg.text}\t${seg.ja || ''}`).join('\n');
     } else if (transcript) {
       content = transcript;
     }
@@ -86,42 +88,77 @@ export default function Home() {
       if (lines.length > 0 && lines[0].split('\t').length >= 3) {
         // segments復元
         const segs = lines.map((line, idx) => {
-          const [start, end, ...rest] = line.split('\t');
+          const cols = line.split('\t');
           return {
             id: idx,
-            start: parseFloat(start),
-            end: parseFloat(end),
-            text: rest.join('\t'),
+            start: parseFloat(cols[0]),
+            end: parseFloat(cols[1]),
+            text: cols[2],
+            ja: cols[3] || '',
           };
         });
         setSegments(segs);
         transcriptText = segs.map(s => s.text).join(' ');
         setTranscript(transcriptText);
+        // jaが全て空なら自動翻訳
+        if (segs.some(s => !s.ja)) {
+          await translateSegments(segs);
+        } else {
+          setTranslation(segs.map(s => s.ja).join(' '));
+        }
       } else {
         // 旧形式
         setSegments([]);
         transcriptText = text;
         setTranscript(text);
-      }
-      // 自動で翻訳API呼び出し
-      if (transcriptText) {
-        setLoading("translate");
-        setError("");
-        try {
-          const res = await fetch("/api/translate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text: transcriptText }),
-          });
-          const data = await res.json();
-          if (data.error) throw new Error(data.error);
-          setTranslation(data.translation);
-        } catch (e: any) {
-          setError(e.message || "エラーが発生しました");
+        // 自動で翻訳API呼び出し
+        if (transcriptText) {
+          setLoading("translate");
+          setError("");
+          try {
+            const res = await fetch("/api/translate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ text: transcriptText }),
+            });
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+            setTranslation(data.translation);
+          } catch (e: any) {
+            setError(e.message || "エラーが発生しました");
+          }
+          setLoading(false);
         }
-        setLoading(false);
       }
     }
+  };
+
+  // セグメントごとに翻訳する関数
+  const translateSegments = async (segs: Segment[]) => {
+    setLoading("translate");
+    setError("");
+    const newSegs = [...segs];
+    for (let i = 0; i < newSegs.length; i++) {
+      if (newSegs[i].ja && newSegs[i].ja.length > 0) continue;
+      try {
+        // 1文ずつ翻訳
+        const res = await fetch("/api/translate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: newSegs[i].text }),
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        newSegs[i].ja = data.translation;
+        setSegments([...newSegs]); // 進捗表示のため都度更新
+      } catch (e: any) {
+        setError(e.message || "エラーが発生しました");
+        break;
+      }
+    }
+    setSegments([...newSegs]);
+    setTranslation(newSegs.map(s => s.ja).join(' '));
+    setLoading(false);
   };
 
   // アップロード処理
@@ -150,11 +187,15 @@ export default function Home() {
         if (data.error) throw new Error(data.error);
         transcriptText = data.transcript;
         setTranscript(data.transcript);
-        if (data.segments) setSegments(data.segments);
+        if (data.segments) {
+          setSegments(data.segments);
+          await translateSegments(data.segments);
+          return;
+        }
         setLoading("translate");
       }
 
-      // 翻訳API呼び出し
+      // transcriptTextがあれば一括翻訳
       if (transcriptText) {
         const res = await fetch("/api/translate", {
           method: "POST",
