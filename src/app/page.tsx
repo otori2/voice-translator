@@ -16,7 +16,9 @@ export default function Home() {
   const [transcript, setTranscript] = useState<string>("");
   const [segments, setSegments] = useState<Segment[]>([]);
   const [translation, setTranslation] = useState<string>("");
-  const [loading, setLoading] = useState<false | "transcribe" | "translate">(false);
+  const [loading, setLoading] = useState<false | "transcribe" | "translate">(
+    false,
+  );
   const [isPlaying, setIsPlaying] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState<number | null>(null);
   const [error, setError] = useState<string>("");
@@ -25,30 +27,35 @@ export default function Home() {
   const textInputRef = useRef<HTMLInputElement>(null);
 
   // 英語セグメント
-  const transcriptSentences = segments.length > 0
-    ? segments.map((s) => s.text)
-    : transcript
-      ? transcript.split(/(?<=[.!?])\s+/)
-      : [];
+  const transcriptSentences =
+    segments.length > 0
+      ? segments.map((s) => s.text)
+      : transcript
+        ? transcript.split(/(?<=[.!?])\s+/)
+        : [];
   // 日本語訳をsegments数に必ず合わせて分割
-  const translationSentences = segments.length > 0
-    ? segments.map((s) => s.ja || "")
-    : (() => {
-        if (!translation) return [];
-        let arr = translation.split(/(?<=[。！？])\s*/);
-        if (segments.length > 0) {
-          if (arr.length < segments.length) {
-            arr = arr.concat(Array(segments.length - arr.length).fill(""));
-          } else if (arr.length > segments.length) {
-            arr = arr.slice(0, segments.length);
+  const translationSentences =
+    segments.length > 0
+      ? segments.map((s) => s.ja || "")
+      : (() => {
+          if (!translation) return [];
+          let arr = translation.split(/(?<=[。！？])\s*/);
+          if (segments.length > 0) {
+            if (arr.length < segments.length) {
+              arr = arr.concat(Array(segments.length - arr.length).fill(""));
+            } else if (arr.length > segments.length) {
+              arr = arr.slice(0, segments.length);
+            }
+            return arr;
           }
           return arr;
-        }
-        return arr;
-      })();
+        })();
 
   // 最大行数をsegments数または両配列の長い方に合わせる
-  const maxLines = Math.max(transcriptSentences.length, translationSentences.length);
+  const maxLines = Math.max(
+    transcriptSentences.length,
+    translationSentences.length,
+  );
 
   // 音声ファイル選択
   const handleAudioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -60,9 +67,11 @@ export default function Home() {
 
   // 文字起こしテキストのダウンロード（TSV形式: start\tend\ttext\tja）
   const handleDownload = () => {
-    let content = '';
+    let content = "";
     if (segments.length > 0) {
-      content = segments.map(seg => `${seg.start}\t${seg.end}\t${seg.text}\t${seg.ja || ''}`).join('\n');
+      content = segments
+        .map((seg) => `${seg.start}\t${seg.end}\t${seg.text}\t${seg.ja || ""}`)
+        .join("\n");
     } else if (transcript) {
       content = transcript;
     }
@@ -78,33 +87,35 @@ export default function Home() {
   };
 
   // 文字起こしテキスト選択（TSV形式ならsegments復元）
-  const handleTranscriptChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleTranscriptChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     if (e.target.files && e.target.files[0]) {
       setTranscriptFile(e.target.files[0]);
       const text = await e.target.files[0].text();
       // TSV形式判定
       const lines = text.split(/\r?\n/);
-      let transcriptText = '';
-      if (lines.length > 0 && lines[0].split('\t').length >= 3) {
+      let transcriptText = "";
+      if (lines.length > 0 && lines[0].split("\t").length >= 3) {
         // segments復元
         const segs = lines.map((line, idx) => {
-          const cols = line.split('\t');
+          const cols = line.split("\t");
           return {
             id: idx,
             start: parseFloat(cols[0]),
             end: parseFloat(cols[1]),
             text: cols[2],
-            ja: cols[3] || '',
+            ja: cols[3] || "",
           };
         });
         setSegments(segs);
-        transcriptText = segs.map(s => s.text).join(' ');
+        transcriptText = segs.map((s) => s.text).join(" ");
         setTranscript(transcriptText);
         // jaが全て空なら自動翻訳
-        if (segs.some(s => !s.ja)) {
+        if (segs.some((s) => !s.ja)) {
           await translateSegments(segs);
         } else {
-          setTranslation(segs.map(s => s.ja).join(' '));
+          setTranslation(segs.map((s) => s.ja).join(" "));
         }
       } else {
         // 旧形式
@@ -157,7 +168,7 @@ export default function Home() {
       }
     }
     setSegments([...newSegs]);
-    setTranslation(newSegs.map(s => s.ja).join(' '));
+    setTranslation(newSegs.map((s) => s.ja).join(" "));
     setLoading(false);
   };
 
@@ -219,7 +230,7 @@ export default function Home() {
     const onTimeUpdate = () => {
       const current = audio.currentTime;
       const idx = segments.findIndex(
-        (seg) => current >= seg.start && current < seg.end
+        (seg) => current >= seg.start && current < seg.end,
       );
       setHighlightIndex(idx >= 0 ? idx : null);
     };
@@ -270,90 +281,111 @@ export default function Home() {
         </div>
       )}
       <div className="w-full bg-white rounded-lg shadow p-4 mt-2 mx-auto">
-        <h1 className="text-2xl font-bold text-center text-blue-gray-800 mb-4 tracking-tight">音声翻訳アプリ</h1>
-        <div className="flex flex-col gap-2 w-full mb-4">
-          <label className="font-semibold text-gray-700 mb-1">音声ファイル（英語）</label>
+        <h1 className="text-2xl font-bold text-center text-blue-gray-800 mb-4 tracking-tight">
+          音声翻訳アプリ
+        </h1>
+        <div className="w-full mb-4">
+          <div className="grid grid-cols-3 gap-4 items-center justify-items-center">
+            <button
+              type="button"
+              onClick={() => audioInputRef.current?.click()}
+              className="bg-blue-600 text-white font-semibold py-2 px-3 rounded shadow hover:bg-blue-700 transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-blue-300 w-full"
+            >
+              🎵 音声ファイル（英語）を選択
+            </button>
+            <button
+              type="button"
+              onClick={() => textInputRef.current?.click()}
+              className="bg-gray-600 text-white font-semibold py-2 px-3 rounded shadow hover:bg-gray-700 transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-gray-300 w-full"
+            >
+              📄 文字起こしテキストファイルを選択
+            </button>
+            <button
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded font-semibold shadow disabled:opacity-50 transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-indigo-300 w-full"
+              onClick={handleUpload}
+              disabled={loading || (!audioFile && !transcriptFile)}
+            >
+              {loading ? "処理中..." : "アップロードして変換"}
+            </button>
+            <div className="text-xs text-gray-600 text-center min-h-[1.5em] w-full">
+              {audioFile?.name || ""}
+            </div>
+            <div className="text-xs text-gray-600 text-center min-h-[1.5em] w-full">
+              {transcriptFile?.name || ""}
+            </div>
+            <div></div>
+          </div>
           <input
             type="file"
             accept="audio/*"
             ref={audioInputRef}
             onChange={handleAudioChange}
             className="hidden"
-            style={{ display: 'none' }}
+            style={{ display: "none" }}
           />
-          <button
-            type="button"
-            onClick={() => audioInputRef.current?.click()}
-            className="inline-block bg-blue-600 text-white font-semibold py-2 px-4 rounded shadow hover:bg-blue-700 transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-blue-300"
-          >
-            🎵 音声ファイルを選択
-          </button>
-          <div className="my-1" />
-          <label className="font-semibold text-gray-700 mb-1">文字起こしテキストファイル（任意）</label>
           <input
             type="file"
             accept=".txt"
             ref={textInputRef}
             onChange={handleTranscriptChange}
             className="hidden"
-            style={{ display: 'none' }}
+            style={{ display: "none" }}
           />
-          <button
-            type="button"
-            onClick={() => textInputRef.current?.click()}
-            className="inline-block bg-gray-600 text-white font-semibold py-2 px-4 rounded shadow hover:bg-gray-700 transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-gray-300"
-          >
-            📄 テキストファイルを選択
-          </button>
-          <button
-            className="mt-2 inline-block bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded font-semibold shadow disabled:opacity-50 transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-indigo-300"
-            onClick={handleUpload}
-            disabled={loading || (!audioFile && !transcriptFile)}
-          >
-            {loading ? "処理中..." : "アップロードして変換"}
-          </button>
-          {error && (
-            <div className="mt-2 text-red-600 font-bold text-sm">{error}</div>
-          )}
-          {audioUrl && (
-            <div className="mt-4 flex flex-col items-center w-full">
-              <audio ref={audioRef} src={audioUrl} controls className="mb-2 w-full rounded shadow border border-gray-200" />
-              <div className="flex gap-2">
-                <button
-                  className="inline-block bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold shadow transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-blue-300"
-                  onClick={handlePlay}
-                  disabled={isPlaying}
-                >
-                  ▶️ 再生
-                </button>
-                <button
-                  className="inline-block bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded font-semibold shadow transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-gray-300"
-                  onClick={handlePause}
-                  disabled={!isPlaying}
-                >
-                  ⏸️ 一時停止
-                </button>
-                <button
-                  className="inline-block bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded shadow font-semibold transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-green-300 disabled:opacity-50"
-                  onClick={handleDownload}
-                  disabled={loading || segments.length === 0}
-                >
-                  文字起こしをダウンロード
-                </button>
-              </div>
-            </div>
-          )}
         </div>
+        {error && (
+          <div className="mt-2 text-red-600 font-bold text-sm">{error}</div>
+        )}
+        {audioUrl && (
+          <div className="mt-4 flex flex-col items-center w-full">
+            <audio
+              ref={audioRef}
+              src={audioUrl}
+              controls
+              className="mb-2 w-full rounded shadow border border-gray-200"
+            />
+            <div className="flex gap-2">
+              <button
+                className="inline-block bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold shadow transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-blue-300"
+                onClick={handlePlay}
+                disabled={isPlaying}
+              >
+                ▶️ 再生
+              </button>
+              <button
+                className="inline-block bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded font-semibold shadow transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-gray-300"
+                onClick={handlePause}
+                disabled={!isPlaying}
+              >
+                ⏸️ 一時停止
+              </button>
+              <button
+                className="inline-block bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded shadow font-semibold transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-green-300 disabled:opacity-50"
+                onClick={handleDownload}
+                disabled={loading || segments.length === 0}
+              >
+                文字起こしをダウンロード
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 英語・日本語を1行ペアで横並び表示 */}
         <div className="w-full mt-2">
           <div className="flex flex-col w-full">
             {[...Array(maxLines)].map((_, idx) => (
-              <div key={idx} className="flex flex-row w-full border-b border-gray-200 py-1 items-center">
-                <div className={`w-1/2 pr-2 ${highlightIndex === idx && isPlaying ? 'bg-yellow-200 text-black font-bold rounded transition-colors shadow' : ''}`}>
-                  {transcriptSentences[idx] || ''}
+              <div
+                key={idx}
+                className="flex flex-row w-full border-b border-gray-200 py-1 items-center"
+              >
+                <div
+                  className={`w-1/2 pr-2 ${highlightIndex === idx && isPlaying ? "bg-yellow-200 text-black font-bold rounded transition-colors shadow" : ""}`}
+                >
+                  {transcriptSentences[idx] || ""}
                 </div>
-                <div className={`w-1/2 pl-2 ${highlightIndex === idx && isPlaying ? 'bg-yellow-200 text-black font-bold rounded transition-colors shadow' : ''}`}>
-                  {translationSentences[idx] || ''}
+                <div
+                  className={`w-1/2 pl-2 ${highlightIndex === idx && isPlaying ? "bg-yellow-200 text-black font-bold rounded transition-colors shadow" : ""}`}
+                >
+                  {translationSentences[idx] || ""}
                 </div>
               </div>
             ))}
@@ -362,4 +394,4 @@ export default function Home() {
       </div>
     </main>
   );
-} 
+}
