@@ -15,7 +15,7 @@ export default function Home() {
   const [transcript, setTranscript] = useState<string>("");
   const [segments, setSegments] = useState<Segment[]>([]);
   const [translation, setTranslation] = useState<string>("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState<false | "transcribe" | "translate">(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState<number | null>(null);
   const [error, setError] = useState<string>("");
@@ -45,6 +45,9 @@ export default function Home() {
     return arr;
   })();
 
+  // 最大行数をsegments数または両配列の長い方に合わせる
+  const maxLines = Math.max(transcriptSentences.length, translationSentences.length);
+
   // 音声ファイル選択
   const handleAudioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -53,16 +56,15 @@ export default function Home() {
     }
   };
 
-  // 文字起こしテキスト選択
-  const handleTranscriptChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setTranscriptFile(e.target.files[0]);
-    }
-  };
-
-  // 文字起こしテキストのダウンロード
+  // 文字起こしテキストのダウンロード（TSV形式: start\tend\ttext）
   const handleDownload = () => {
-    const blob = new Blob([transcript], { type: "text/plain" });
+    let content = '';
+    if (segments.length > 0) {
+      content = segments.map(seg => `${seg.start}\t${seg.end}\t${seg.text}`).join('\n');
+    } else if (transcript) {
+      content = transcript;
+    }
+    const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -73,9 +75,58 @@ export default function Home() {
     URL.revokeObjectURL(url);
   };
 
+  // 文字起こしテキスト選択（TSV形式ならsegments復元）
+  const handleTranscriptChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setTranscriptFile(e.target.files[0]);
+      const text = await e.target.files[0].text();
+      // TSV形式判定
+      const lines = text.split(/\r?\n/);
+      let transcriptText = '';
+      if (lines.length > 0 && lines[0].split('\t').length >= 3) {
+        // segments復元
+        const segs = lines.map((line, idx) => {
+          const [start, end, ...rest] = line.split('\t');
+          return {
+            id: idx,
+            start: parseFloat(start),
+            end: parseFloat(end),
+            text: rest.join('\t'),
+          };
+        });
+        setSegments(segs);
+        transcriptText = segs.map(s => s.text).join(' ');
+        setTranscript(transcriptText);
+      } else {
+        // 旧形式
+        setSegments([]);
+        transcriptText = text;
+        setTranscript(text);
+      }
+      // 自動で翻訳API呼び出し
+      if (transcriptText) {
+        setLoading("translate");
+        setError("");
+        try {
+          const res = await fetch("/api/translate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: transcriptText }),
+          });
+          const data = await res.json();
+          if (data.error) throw new Error(data.error);
+          setTranslation(data.translation);
+        } catch (e: any) {
+          setError(e.message || "エラーが発生しました");
+        }
+        setLoading(false);
+      }
+    }
+  };
+
   // アップロード処理
   const handleUpload = async () => {
-    setLoading(true);
+    setLoading("transcribe");
     setError("");
     let transcriptText = "";
     setSegments([]);
@@ -86,6 +137,7 @@ export default function Home() {
         const text = await transcriptFile.text();
         transcriptText = text;
         setTranscript(text);
+        setLoading("translate");
       } else if (audioFile) {
         // なければ音声ファイルをAPIに送信
         const formData = new FormData();
@@ -99,6 +151,7 @@ export default function Home() {
         transcriptText = data.transcript;
         setTranscript(data.transcript);
         if (data.segments) setSegments(data.segments);
+        setLoading("translate");
       }
 
       // 翻訳API呼び出し
@@ -166,6 +219,15 @@ export default function Home() {
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-2">
+      {/* ローディング表示 */}
+      {loading && (
+        <div className="flex items-center gap-2 mb-4">
+          <span className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></span>
+          <span className="text-blue-700 font-semibold text-base">
+            {loading === "transcribe" ? "文字起こし中..." : "翻訳中..."}
+          </span>
+        </div>
+      )}
       <div className="w-full bg-white rounded-lg shadow p-4 mt-2 mx-auto">
         <h1 className="text-2xl font-bold text-center text-blue-gray-800 mb-4 tracking-tight">音声翻訳アプリ</h1>
         <div className="flex flex-col gap-2 w-full mb-4">
@@ -230,59 +292,30 @@ export default function Home() {
                 >
                   ⏸️ 一時停止
                 </button>
-              </div>
-            </div>
-          )}
-        </div>
-        {/* 英語（左）・日本語（右）の2カラム領域を画面幅いっぱいに */}
-        <div className="flex flex-col md:flex-row gap-2 w-full mt-2">
-          {/* 左：英語 */}
-          <div className="w-full md:w-1/2 bg-gray-50 p-2 rounded min-h-[120px]">
-            <h2 className="font-bold mb-1 text-blue-900 text-sm">英語文字起こし</h2>
-            <div className="space-y-1 text-base">
-              {transcriptSentences.map((sentence, idx) => (
-                <div key={idx} className="mb-1">
-                  <span
-                    className={
-                      highlightIndex === idx && isPlaying
-                        ? "bg-yellow-200 text-black font-bold px-1 rounded transition-colors shadow"
-                        : ""
-                    }
-                  >
-                    {sentence}
-                  </span>
-                </div>
-              ))}
-            </div>
-            {transcript && (
-              <div className="flex justify-center">
                 <button
-                  className="mt-2 inline-block bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded shadow font-semibold transition-colors duration-150 text-xs focus:outline-none focus:ring-2 focus:ring-green-300"
+                  className="inline-block bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded shadow font-semibold transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-green-300 disabled:opacity-50"
                   onClick={handleDownload}
+                  disabled={loading || segments.length === 0}
                 >
                   文字起こしをダウンロード
                 </button>
               </div>
-            )}
-          </div>
-          {/* 右：日本語訳 */}
-          <div className="w-full md:w-1/2 bg-gray-50 p-2 rounded min-h-[120px]">
-            <h2 className="font-bold mb-1 text-blue-900 text-sm">日本語訳</h2>
-            <div className="space-y-1 text-base">
-              {translationSentences.map((sentence, idx) => (
-                <div key={idx} className="mb-1">
-                  <span
-                    className={
-                      highlightIndex === idx && isPlaying
-                        ? "bg-yellow-200 text-black font-bold px-1 rounded transition-colors shadow"
-                        : ""
-                    }
-                  >
-                    {sentence}
-                  </span>
-                </div>
-              ))}
             </div>
+          )}
+        </div>
+        {/* 英語・日本語を1行ペアで横並び表示 */}
+        <div className="w-full mt-2">
+          <div className="flex flex-col w-full">
+            {[...Array(maxLines)].map((_, idx) => (
+              <div key={idx} className="flex flex-row w-full border-b border-gray-200 py-1 items-center">
+                <div className={`w-1/2 pr-2 ${highlightIndex === idx && isPlaying ? 'bg-yellow-200 text-black font-bold rounded transition-colors shadow' : ''}`}>
+                  {transcriptSentences[idx] || ''}
+                </div>
+                <div className={`w-1/2 pl-2 ${highlightIndex === idx && isPlaying ? 'bg-yellow-200 text-black font-bold rounded transition-colors shadow' : ''}`}>
+                  {translationSentences[idx] || ''}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
