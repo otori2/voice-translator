@@ -305,7 +305,7 @@ export default function Home() {
               onClick={handleUpload}
               disabled={loading || (!audioFile && !transcriptFile)}
             >
-              {loading ? "処理中..." : "アップロードして変換"}
+              {loading ? "処理中..." : "文字起こし&翻訳実行"}
             </button>
             <div className="text-xs text-gray-600 text-center min-h-[1.5em] w-full">
               {audioFile?.name || ""}
@@ -369,10 +369,12 @@ export default function Home() {
           </div>
         )}
         {/* 英語・日本語の見出し */}
-        <div className="w-full flex flex-row border-b border-gray-300 mt-6 mb-1">
-          <div className="w-1/2 pr-2 text-center font-bold text-blue-900 text-base">英語</div>
-          <div className="w-1/2 pl-2 text-center font-bold text-blue-900 text-base">日本語訳</div>
-        </div>
+        {(transcriptSentences.length > 0 || translationSentences.length > 0) && (
+          <div className="w-full flex flex-row border-b border-gray-300 mt-6 mb-1">
+            <div className="w-1/2 pr-2 text-center font-bold text-blue-900 text-base">英語</div>
+            <div className="w-1/2 pl-2 text-center font-bold text-blue-900 text-base">日本語訳</div>
+          </div>
+        )}
         {/* 英語・日本語を1行ペアで横並び表示 */}
         <div className="w-full mt-2">
           <div className="flex flex-col w-full">
