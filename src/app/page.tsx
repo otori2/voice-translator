@@ -289,19 +289,19 @@ export default function Home() {
             <button
               type="button"
               onClick={() => audioInputRef.current?.click()}
-              className="bg-blue-600 text-white font-semibold py-2 px-3 rounded shadow hover:bg-blue-700 transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-blue-300 w-full"
+              className="bg-blue-200 text-blue-900 font-semibold py-2 px-3 rounded shadow hover:bg-blue-300 transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-blue-100 w-full"
             >
-              🎵 音声ファイル（英語）を選択
+              🎵 音声ファイルを選択
             </button>
             <button
               type="button"
               onClick={() => textInputRef.current?.click()}
-              className="bg-gray-600 text-white font-semibold py-2 px-3 rounded shadow hover:bg-gray-700 transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-gray-300 w-full"
+              className="bg-gray-200 text-gray-800 font-semibold py-2 px-3 rounded shadow hover:bg-gray-300 transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-gray-100 w-full"
             >
-              📄 文字起こしテキストファイルを選択
+              📄 テキストファイルを選択
             </button>
             <button
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded font-semibold shadow disabled:opacity-50 transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-indigo-300 w-full"
+              className="bg-rose-200 hover:bg-rose-300 text-rose-900 px-4 py-2 rounded font-semibold shadow disabled:opacity-50 transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-rose-100 w-full"
               onClick={handleUpload}
               disabled={loading || (!audioFile && !transcriptFile)}
             >
@@ -345,21 +345,21 @@ export default function Home() {
             />
             <div className="flex gap-2">
               <button
-                className="inline-block bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold shadow transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-blue-300"
+                className="inline-block bg-blue-200 hover:bg-blue-300 text-blue-900 px-4 py-2 rounded font-semibold shadow transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-blue-100"
                 onClick={handlePlay}
                 disabled={isPlaying}
               >
                 ▶️ 再生
               </button>
               <button
-                className="inline-block bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded font-semibold shadow transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-gray-300"
+                className="inline-block bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded font-semibold shadow transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-gray-100"
                 onClick={handlePause}
                 disabled={!isPlaying}
               >
                 ⏸️ 一時停止
               </button>
               <button
-                className="inline-block bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded shadow font-semibold transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-green-300 disabled:opacity-50"
+                className="inline-block bg-green-200 hover:bg-green-300 text-green-900 px-4 py-2 rounded shadow font-semibold transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-green-100 disabled:opacity-50"
                 onClick={handleDownload}
                 disabled={loading || segments.length === 0}
               >
@@ -368,7 +368,11 @@ export default function Home() {
             </div>
           </div>
         )}
-
+        {/* 英語・日本語の見出し */}
+        <div className="w-full flex flex-row border-b border-gray-300 mt-6 mb-1">
+          <div className="w-1/2 pr-2 text-center font-bold text-blue-900 text-base">英語</div>
+          <div className="w-1/2 pl-2 text-center font-bold text-blue-900 text-base">日本語訳</div>
+        </div>
         {/* 英語・日本語を1行ペアで横並び表示 */}
         <div className="w-full mt-2">
           <div className="flex flex-col w-full">
@@ -378,14 +382,12 @@ export default function Home() {
                 className="flex flex-row w-full border-b border-gray-200 py-1 items-center"
               >
                 <div
-                  className={`w-1/2 pr-2 ${highlightIndex === idx && isPlaying ? "bg-yellow-200 text-black font-bold rounded transition-colors shadow" : ""}`}
+                  className={`w-1/2 pr-2 ${highlightIndex === idx && isPlaying ? 'bg-yellow-100 text-black font-bold rounded transition-colors shadow' : ''}`}
                 >
-                  {transcriptSentences[idx] || ""}
+                  {transcriptSentences[idx] || ''}
                 </div>
-                <div
-                  className={`w-1/2 pl-2 ${highlightIndex === idx && isPlaying ? "bg-yellow-200 text-black font-bold rounded transition-colors shadow" : ""}`}
-                >
-                  {translationSentences[idx] || ""}
+                <div className={`w-1/2 pl-2 ${highlightIndex === idx && isPlaying ? 'bg-yellow-100 text-black font-bold rounded transition-colors shadow' : ''}`}>
+                  {translationSentences[idx] || ''}
                 </div>
               </div>
             ))}
