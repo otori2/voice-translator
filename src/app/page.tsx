@@ -68,19 +68,22 @@ export default function Home() {
 
   // 文字起こしテキストのダウンロード（TSV形式: start\tend\ttext\tja）
   const handleDownload = () => {
-    let content = "";
+    let content = '';
     if (segments.length > 0) {
-      content = segments
-        .map((seg) => `${seg.start}\t${seg.end}\t${seg.text}\t${seg.ja || ""}`)
-        .join("\n");
+      content = segments.map(seg => `${seg.start}\t${seg.end}\t${seg.text}\t${seg.ja || ''}`).join('\n');
     } else if (transcript) {
       content = transcript;
+    }
+    // 音声ファイル名をベースに拡張子だけ.txtに
+    let filename = 'transcript.txt';
+    if (audioFile?.name) {
+      filename = audioFile.name.replace(/\.[^.]+$/, '') + '.txt';
     }
     const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "transcript.txt";
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -88,15 +91,12 @@ export default function Home() {
   };
 
   // 文字起こしテキスト選択（TSV形式ならsegments復元）
-  const handleTranscriptChange = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
+  const handleTranscriptChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setTranscriptFile(e.target.files[0]);
       const text = await e.target.files[0].text();
       // TSV形式判定
       const lines = text.split(/\r?\n/);
-      let transcriptText = "";
       if (lines.length > 0 && lines[0].split("\t").length >= 3) {
         // segments復元
         const segs = lines.map((line, idx) => {
@@ -110,37 +110,13 @@ export default function Home() {
           };
         });
         setSegments(segs);
-        transcriptText = segs.map((s) => s.text).join(" ");
-        setTranscript(transcriptText);
-        // jaが全て空なら自動翻訳
-        if (segs.some((s) => !s.ja)) {
-          await translateSegments(segs);
-        } else {
-          setTranslation(segs.map((s) => s.ja).join(" "));
-        }
+        setTranscript(segs.map((s) => s.text).join(" "));
+        setTranslation(segs.map((s) => s.ja).join(" "));
       } else {
         // 旧形式
         setSegments([]);
-        transcriptText = text;
         setTranscript(text);
-        // 自動で翻訳API呼び出し
-        if (transcriptText) {
-          setLoading("translate");
-          setError("");
-          try {
-            const res = await fetch("/api/translate", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ text: transcriptText }),
-            });
-            const data = await res.json();
-            if (data.error) throw new Error(data.error);
-            setTranslation(data.translation);
-          } catch (e: any) {
-            setError(e.message || "エラーが発生しました");
-          }
-          setLoading(false);
-        }
+        setTranslation("");
       }
     }
   };
@@ -179,14 +155,15 @@ export default function Home() {
     setError("");
     let transcriptText = "";
     setSegments([]);
+    // 料金情報などもリセットする場合はここで
 
     try {
-      // 文字起こしテキストがあればそれを使う
       if (transcriptFile) {
         const text = await transcriptFile.text();
         transcriptText = text;
         setTranscript(text);
-        setLoading("translate");
+        setLoading(false);
+        return; // 翻訳APIは呼ばない
       } else if (audioFile) {
         // なければ音声ファイルをAPIに送信
         const formData = new FormData();
@@ -199,24 +176,21 @@ export default function Home() {
         if (data.error) throw new Error(data.error);
         transcriptText = data.transcript;
         setTranscript(data.transcript);
-        if (data.segments) {
-          setSegments(data.segments);
-          await translateSegments(data.segments);
-          return;
-        }
+        if (data.segments) setSegments(data.segments);
         setLoading("translate");
-      }
-
-      // transcriptTextがあれば一括翻訳
-      if (transcriptText) {
-        const res = await fetch("/api/translate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: transcriptText }),
-        });
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
-        setTranslation(data.translation);
+        if (transcriptText) {
+          // 翻訳API呼び出し
+          const res = await fetch("/api/translate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: transcriptText }),
+          });
+          const data = await res.json();
+          if (data.error) throw new Error(data.error);
+          setTranslation(data.translation);
+        } else {
+          setError("翻訳するテキストがありません。");
+        }
       }
     } catch (e: any) {
       setError(e.message || "エラーが発生しました");
