@@ -256,21 +256,22 @@ export default function Home() {
 
   return (
     <main className="h-screen flex flex-col items-center justify-center bg-gray-100 p-2">
-      {/* ローディング表示 */}
-      {loading && (
-        <div className="absolute top-4 flex items-center gap-2 z-10">
-          <span className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></span>
-          <span className="text-blue-700 font-semibold text-base">
-            {loading === "transcribe" ? "文字起こし中..." : "翻訳中..."}
-          </span>
-        </div>
-      )}
       <div className="w-full bg-white rounded-lg shadow p-4 mt-2 mx-auto flex flex-col h-[95vh]">
         {/* ---- ヘッダー部分 (固定) ---- */}
         <div className="flex-shrink-0">
-          <h1 className="text-2xl font-bold text-center text-blue-gray-800 mb-4 tracking-tight">
-            音声翻訳アプリ
-          </h1>
+          <div className="flex flex-row items-center justify-center mb-4 relative">
+            <h1 className="text-2xl font-bold text-blue-gray-800 tracking-tight mx-auto">
+              音声翻訳アプリ
+            </h1>
+            {loading && (
+              <div className="flex items-center gap-2 ml-4 absolute right-0">
+                <span className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></span>
+                <span className="text-blue-700 font-semibold text-base">
+                  {loading === "transcribe" ? "文字起こし中..." : "翻訳中..."}
+                </span>
+              </div>
+            )}
+          </div>
           <div className="w-full mb-4">
             <div className="grid grid-cols-3 gap-4 items-center justify-items-center">
               <button
