@@ -9,6 +9,8 @@ interface Segment {
   ja?: string;
 }
 
+type TranslationEngine = "openai" | "google";
+
 export default function Home() {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioUrl, setAudioUrl] = useState<string>("");
@@ -16,6 +18,8 @@ export default function Home() {
   const [transcript, setTranscript] = useState<string>("");
   const [segments, setSegments] = useState<Segment[]>([]);
   const [translation, setTranslation] = useState<string>("");
+  const [translationEngine, setTranslationEngine] =
+    useState<TranslationEngine>("openai");
   const [loading, setLoading] = useState<false | "transcribe" | "translate">(
     false,
   );
@@ -133,7 +137,10 @@ export default function Home() {
         const res = await fetch("/api/translate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: newSegs[i].text }),
+          body: JSON.stringify({
+            text: newSegs[i].text,
+            engine: translationEngine,
+          }),
         });
         const data = await res.json();
         if (data.error) throw new Error(data.error);
@@ -188,7 +195,7 @@ export default function Home() {
         const res = await fetch("/api/translate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: transcriptText }),
+          body: JSON.stringify({ text: transcriptText, engine: translationEngine }),
         });
         const data = await res.json();
         if (data.error) throw new Error(data.error);
@@ -273,6 +280,30 @@ export default function Home() {
                 </span>
               </div>
             )}
+          </div>
+          <div className="flex justify-center mb-4 space-x-4">
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="radio"
+                name="translationEngine"
+                value="openai"
+                checked={translationEngine === "openai"}
+                onChange={() => setTranslationEngine("openai")}
+                className="form-radio h-4 w-4 text-blue-600"
+              />
+              <span className="text-gray-700">OpenAI (高精度)</span>
+            </label>
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="radio"
+                name="translationEngine"
+                value="google"
+                checked={translationEngine === "google"}
+                onChange={() => setTranslationEngine("google")}
+                className="form-radio h-4 w-4 text-green-600"
+              />
+              <span className="text-gray-700">Google翻訳 (高速･無料)</span>
+            </label>
           </div>
           <div className="w-full mb-4">
             <div className="grid grid-cols-3 gap-4 items-center justify-items-center">

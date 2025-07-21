@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@iamtraction/google-translate": "^2.0.1",
     "formdata-node": "^6.0.3",
     "next": "15.4.1",
     "react": "19.1.0",
