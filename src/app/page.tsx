@@ -155,15 +155,14 @@ export default function Home() {
     setError("");
     let transcriptText = "";
     setSegments([]);
-    // 料金情報などもリセットする場合はここで
 
     try {
+      // 文字起こしテキストがあればそれを使う
       if (transcriptFile) {
         const text = await transcriptFile.text();
         transcriptText = text;
         setTranscript(text);
-        setLoading(false);
-        return; // 翻訳APIは呼ばない
+        setLoading("translate");
       } else if (audioFile) {
         // なければ音声ファイルをAPIに送信
         const formData = new FormData();
@@ -176,21 +175,24 @@ export default function Home() {
         if (data.error) throw new Error(data.error);
         transcriptText = data.transcript;
         setTranscript(data.transcript);
-        if (data.segments) setSegments(data.segments);
-        setLoading("translate");
-        if (transcriptText) {
-          // 翻訳API呼び出し
-          const res = await fetch("/api/translate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text: transcriptText }),
-          });
-          const data = await res.json();
-          if (data.error) throw new Error(data.error);
-          setTranslation(data.translation);
-        } else {
-          setError("翻訳するテキストがありません。");
+        if (data.segments) {
+          setSegments(data.segments);
+          await translateSegments(data.segments);
+          return;
         }
+        setLoading("translate");
+      }
+
+      // transcriptTextがあれば一括翻訳
+      if (transcriptText) {
+        const res = await fetch("/api/translate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: transcriptText }),
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        setTranslation(data.translation);
       }
     } catch (e: any) {
       setError(e.message || "エラーが発生しました");
