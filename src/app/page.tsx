@@ -443,7 +443,16 @@ export default function Home() {
                 ref={(el: HTMLDivElement | null) => { sentenceRefs.current[idx] = el; }}
                 className="flex flex-row w-full border-b border-gray-200 py-1 items-center"
               >
-                <div className={`w-1/2 pr-2 ${highlightIndex === idx && isPlaying ? 'bg-yellow-100 text-black font-bold rounded transition-colors shadow' : ''}`}>
+                <div
+                  className={`w-1/2 pr-2 ${highlightIndex === idx && isPlaying ? 'bg-yellow-100 text-black font-bold rounded transition-colors shadow' : ''} ${segments[idx] ? 'cursor-pointer hover:bg-blue-100' : ''}`}
+                  onClick={() => {
+                    if (segments[idx] && audioRef.current) {
+                      audioRef.current.currentTime = segments[idx].start;
+                      audioRef.current.play();
+                      setIsPlaying(true);
+                    }
+                  }}
+                >
                   {transcriptSentences[idx] || ''}
                 </div>
                 <div className={`w-1/2 pl-2 ${highlightIndex === idx && isPlaying ? 'bg-yellow-100 text-black font-bold rounded transition-colors shadow' : ''}`}>
