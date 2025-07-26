@@ -11,6 +11,10 @@ interface Segment {
 
 type TranslationEngine = "openai" | "google";
 
+// fetchの戻り値型を明示
+interface TranslateResponse { translation: string; error?: string; }
+interface TranscribeResponse { transcript: string; segments?: Segment[]; error?: string; }
+
 export default function Home() {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioUrl, setAudioUrl] = useState<string>("");
@@ -142,12 +146,12 @@ export default function Home() {
             engine: translationEngine,
           }),
         });
-        const data = await res.json();
+        const data: TranslateResponse = await res.json();
         if (data.error) throw new Error(data.error);
         newSegs[i].ja = data.translation;
         setSegments([...newSegs]); // 進捗表示のため都度更新
-      } catch (e: any) {
-        setError(e.message || "エラーが発生しました");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "エラーが発生しました");
         break;
       }
     }
@@ -178,7 +182,7 @@ export default function Home() {
           method: "POST",
           body: formData,
         });
-        const data = await res.json();
+        const data: TranscribeResponse = await res.json();
         if (data.error) throw new Error(data.error);
         transcriptText = data.transcript;
         setTranscript(data.transcript);
@@ -197,12 +201,12 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text: transcriptText, engine: translationEngine }),
         });
-        const data = await res.json();
+        const data: TranslateResponse = await res.json();
         if (data.error) throw new Error(data.error);
         setTranslation(data.translation);
       }
-    } catch (e: any) {
-      setError(e.message || "エラーが発生しました");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "エラーが発生しました");
     }
     setLoading(false);
   };
@@ -240,7 +244,13 @@ export default function Home() {
 
   // 自動スクロール
   useEffect(() => {
-    if (highlightIndex !== null && sentenceRefs.current[highlightIndex]) {
+    if (
+      highlightIndex !== null &&
+      typeof highlightIndex !== 'undefined' &&
+      highlightIndex >= 0 &&
+      highlightIndex < sentenceRefs.current.length &&
+      sentenceRefs.current[highlightIndex]
+    ) {
       sentenceRefs.current[highlightIndex]?.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
@@ -261,6 +271,26 @@ export default function Home() {
       audioRef.current.pause();
       setIsPlaying(false);
     }
+  };
+
+  // クリアボタン処理
+  const handleClear = () => {
+    setAudioFile(null);
+    setAudioUrl("");
+    setTranscriptFile(null);
+    setTranscript("");
+    setSegments([]);
+    setTranslation("");
+    setHighlightIndex(null);
+    setError("");
+    setIsPlaying(false);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    // input[type=file]のvalueもリセット
+    if (audioInputRef.current) audioInputRef.current.value = "";
+    if (textInputRef.current) textInputRef.current.value = "";
   };
 
   return (
@@ -306,7 +336,7 @@ export default function Home() {
             </label>
           </div>
           <div className="w-full mb-4">
-            <div className="grid grid-cols-3 gap-4 items-center justify-items-center">
+            <div className="grid grid-cols-4 gap-4 items-center justify-items-center">
               <button
                 type="button"
                 onClick={() => audioInputRef.current?.click()}
@@ -324,9 +354,16 @@ export default function Home() {
               <button
                 className="bg-rose-200 hover:bg-rose-300 text-rose-900 px-4 py-2 rounded font-semibold shadow disabled:opacity-50 transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-rose-100 w-full"
                 onClick={handleUpload}
-                disabled={loading || (!audioFile && !transcriptFile)}
+                disabled={!!loading || (!audioFile && !transcriptFile)}
               >
                 {loading ? "処理中..." : "文字起こし&翻訳実行"}
+              </button>
+              <button
+                className="bg-yellow-200 hover:bg-yellow-300 text-yellow-900 px-4 py-2 rounded font-semibold shadow transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-yellow-100 w-full"
+                onClick={handleClear}
+                disabled={!!loading}
+              >
+                🧹 クリア
               </button>
               <div className="text-xs text-gray-600 text-center min-h-[1.5em] w-full">
                 {audioFile?.name || ""}
@@ -334,6 +371,7 @@ export default function Home() {
               <div className="text-xs text-gray-600 text-center min-h-[1.5em] w-full">
                 {transcriptFile?.name || ""}
               </div>
+              <div></div>
               <div></div>
             </div>
             <input
@@ -382,7 +420,7 @@ export default function Home() {
                 <button
                   className="inline-block bg-green-200 hover:bg-green-300 text-green-900 px-4 py-2 rounded shadow font-semibold transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-green-100 disabled:opacity-50"
                   onClick={handleDownload}
-                  disabled={loading || segments.length === 0}
+                  disabled={!!loading || segments.length === 0}
                 >
                   文字起こしをダウンロード
                 </button>
@@ -402,7 +440,7 @@ export default function Home() {
             {[...Array(maxLines)].map((_, idx) => (
               <div 
                 key={idx} 
-                ref={el => sentenceRefs.current[idx] = el}
+                ref={(el: HTMLDivElement | null) => { sentenceRefs.current[idx] = el; }}
                 className="flex flex-row w-full border-b border-gray-200 py-1 items-center"
               >
                 <div className={`w-1/2 pr-2 ${highlightIndex === idx && isPlaying ? 'bg-yellow-100 text-black font-bold rounded transition-colors shadow' : ''}`}>
