@@ -1,36 +1,70 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 音声翻訳アプリ
 
-## Getting Started
+このアプリは、**英語音声ファイルのアップロード・自動文字起こし・日本語翻訳**を行い、 再生と同時に英語・日本語の対応テキストをハイライト表示できるWebアプリです。
 
-First, run the development server:
+## 主な機能
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- 英語音声ファイルのアップロードと自動文字起こし（OpenAI Whisper利用）
+- 英文テキストの日本語翻訳（OpenAI GPTまたはGoogle翻訳を選択可能）
+- 音声再生に合わせた英語・日本語テキストの同期ハイライト表示
+- 文字起こし・翻訳結果のTSV形式ダウンロード／アップロード
+- OpenAI API利用コストの表示
+- モダンなUI（Material風・TailwindCSS）
+
+## セットアップ
+
+### 1. 必要な環境変数の設定
+
+プロジェクトルート直下に`env.sample`を参考に`.env.local`ファイルを作成し、以下のようにOpenAI APIキーを記載してください。
+
+```
+OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+> ※ Google翻訳エンジンはAPIキー不要です。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 2. Docker Composeでの起動
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+docker compose up --build
+```
 
-## Learn More
+- `.env.local`の内容はDockerコンテナにも自動で反映されます。
 
-To learn more about Next.js, take a look at the following resources:
+### 3. ローカル開発サーバーでの起動
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm install
+npm run dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 4. アプリへのアクセス
 
-## Deploy on Vercel
+[http://localhost:13001](http://localhost:13001)  
+（Dockerの場合。ローカル開発は[http://localhost:3000](http://localhost:3000)）
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 使い方
+
+1. **音声ファイル**または**テキストファイル**をアップロード
+2. 「文字起こし&翻訳実行」ボタンをクリック
+3. タイトル下のラジオボタンで翻訳エンジン（OpenAI/Google）を選択可能
+4. 音声再生に合わせて、英語・日本語テキストが同期ハイライト表示されます
+5. 結果をTSV形式でダウンロード・再アップロード可能
+
+---
+
+## 翻訳エンジンについて
+
+- **OpenAI**: 高精度・有料（APIキー必須、コスト表示あり）
+- **Google翻訳**: 高速・無料（APIキー不要、非公式API利用）
+
+---
+
+## 注意事項
+
+- `.env.local`には機密情報（APIキー等）を記載するため、**必ず.gitignoreに追加**してください。
+- Google翻訳は非公式APIを利用しているため、商用利用や大量リクエストにはご注意ください。
+
+---
