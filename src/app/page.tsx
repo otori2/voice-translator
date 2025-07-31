@@ -18,6 +18,9 @@ interface TranscribeResponse { transcript: string; segments?: Segment[]; error?:
 export default function Home() {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioUrl, setAudioUrl] = useState<string>("");
+  // 動画用の状態を追加
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string>("");
   const [transcriptFile, setTranscriptFile] = useState<File | null>(null);
   const [transcript, setTranscript] = useState<string>("");
   const [segments, setSegments] = useState<Segment[]>([]);
@@ -31,6 +34,7 @@ export default function Home() {
   const [highlightIndex, setHighlightIndex] = useState<number | null>(null);
   const [error, setError] = useState<string>("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null); // 動画用ref
   const audioInputRef = useRef<HTMLInputElement>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
   const sentenceRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -66,11 +70,23 @@ export default function Home() {
     translationSentences.length,
   );
 
-  // 音声ファイル選択
-  const handleAudioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // 音声・動画ファイル選択
+  const handleMediaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setAudioFile(e.target.files[0]);
-      setAudioUrl(URL.createObjectURL(e.target.files[0]));
+      const file = e.target.files[0];
+      const url = URL.createObjectURL(file);
+      // 拡張子で動画か音声か判定
+      if (file.type.startsWith("video/")) {
+        setVideoFile(file);
+        setVideoUrl(url);
+        setAudioFile(null);
+        setAudioUrl("");
+      } else if (file.type.startsWith("audio/")) {
+        setAudioFile(file);
+        setAudioUrl(url);
+        setVideoFile(null);
+        setVideoUrl("");
+      }
     }
   };
 
@@ -160,7 +176,7 @@ export default function Home() {
     setLoading(false);
   };
 
-  // アップロード処理
+  // handleUploadの修正: 動画ファイルにも対応
   const handleUpload = async () => {
     setLoading("transcribe");
     setError("");
@@ -174,10 +190,11 @@ export default function Home() {
         transcriptText = text;
         setTranscript(text);
         setLoading("translate");
-      } else if (audioFile) {
-        // なければ音声ファイルをAPIに送信
+      } else if (audioFile || videoFile) {
+        // 音声または動画ファイルをAPIに送信
         const formData = new FormData();
-        formData.append("file", audioFile);
+        if (audioFile) formData.append("file", audioFile);
+        if (videoFile) formData.append("file", videoFile);
         const res = await fetch("/api/transcribe", {
           method: "POST",
           body: formData,
@@ -211,36 +228,56 @@ export default function Home() {
     setLoading(false);
   };
 
-  // 音声再生位置に応じてハイライト（start <= current < end）
+  // 再生位置に応じてハイライト（audio/video両対応）
   useEffect(() => {
-    if (!isPlaying || !audioRef.current || segments.length === 0) return;
+    if (!isPlaying || segments.length === 0) return;
     const audio = audioRef.current;
+    const video = videoRef.current;
+    const getCurrent = () => {
+      if (audio && !videoUrl) return audio.currentTime;
+      if (video && videoUrl) return video.currentTime;
+      return 0;
+    };
     const onTimeUpdate = () => {
-      const current = audio.currentTime;
+      const current = getCurrent();
       const idx = segments.findIndex(
         (seg) => current >= seg.start && current < seg.end,
       );
       setHighlightIndex(idx >= 0 ? idx : null);
     };
-    audio.addEventListener("timeupdate", onTimeUpdate);
-    return () => {
-      audio.removeEventListener("timeupdate", onTimeUpdate);
-    };
-  }, [isPlaying, segments]);
+    if (audio && !videoUrl) {
+      audio.addEventListener("timeupdate", onTimeUpdate);
+      return () => {
+        audio.removeEventListener("timeupdate", onTimeUpdate);
+      };
+    } else if (video && videoUrl) {
+      video.addEventListener("timeupdate", onTimeUpdate);
+      return () => {
+        video.removeEventListener("timeupdate", onTimeUpdate);
+      };
+    }
+  }, [isPlaying, segments, videoUrl]);
 
-  // 再生終了時のハイライト解除
+  // 再生終了時のハイライト解除（audio/video両対応）
   useEffect(() => {
-    if (!audioRef.current) return;
     const audio = audioRef.current;
+    const video = videoRef.current;
     const onEnded = () => {
       setIsPlaying(false);
       setHighlightIndex(null);
     };
-    audio.addEventListener("ended", onEnded);
-    return () => {
-      audio.removeEventListener("ended", onEnded);
-    };
-  }, []);
+    if (audio && !videoUrl) {
+      audio.addEventListener("ended", onEnded);
+      return () => {
+        audio.removeEventListener("ended", onEnded);
+      };
+    } else if (video && videoUrl) {
+      video.addEventListener("ended", onEnded);
+      return () => {
+        video.removeEventListener("ended", onEnded);
+      };
+    }
+  }, [videoUrl]);
 
   // 自動スクロール
   useEffect(() => {
@@ -258,16 +295,22 @@ export default function Home() {
     }
   }, [highlightIndex]);
 
-  // 音声再生コントロール
+  // 再生コントロール（audio/video両対応）
   const handlePlay = () => {
-    if (audioRef.current) {
+    if (videoUrl && videoRef.current) {
+      videoRef.current.play();
+      setIsPlaying(true);
+    } else if (audioRef.current) {
       audioRef.current.play();
       setIsPlaying(true);
     }
   };
 
   const handlePause = () => {
-    if (audioRef.current) {
+    if (videoUrl && videoRef.current) {
+      videoRef.current.pause();
+      setIsPlaying(false);
+    } else if (audioRef.current) {
       audioRef.current.pause();
       setIsPlaying(false);
     }
@@ -277,6 +320,8 @@ export default function Home() {
   const handleClear = () => {
     setAudioFile(null);
     setAudioUrl("");
+    setVideoFile(null);
+    setVideoUrl("");
     setTranscriptFile(null);
     setTranscript("");
     setSegments([]);
@@ -287,6 +332,10 @@ export default function Home() {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
+    }
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
     }
     // input[type=file]のvalueもリセット
     if (audioInputRef.current) audioInputRef.current.value = "";
@@ -300,7 +349,7 @@ export default function Home() {
         <div className="flex-shrink-0">
           <div className="flex flex-row items-center justify-center mb-4 relative">
             <h1 className="text-2xl font-bold text-blue-gray-800 tracking-tight mx-auto">
-              音声翻訳アプリ
+              音声・動画翻訳アプリ
             </h1>
             {loading && (
               <div className="flex items-center gap-2 ml-4 absolute right-0">
@@ -342,7 +391,7 @@ export default function Home() {
                 onClick={() => audioInputRef.current?.click()}
                 className="bg-blue-200 text-blue-900 font-semibold py-2 px-3 rounded shadow hover:bg-blue-300 transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-blue-100 w-full"
               >
-                🎵 音声ファイルを選択
+                🎵 音声/動画ファイルを選択
               </button>
               <button
                 type="button"
@@ -376,9 +425,9 @@ export default function Home() {
             </div>
             <input
               type="file"
-              accept="audio/*"
+              accept="audio/*,video/*"
               ref={audioInputRef}
-              onChange={handleAudioChange}
+              onChange={handleMediaChange}
               className="hidden"
               style={{ display: "none" }}
             />
@@ -394,7 +443,7 @@ export default function Home() {
           {error && (
             <div className="mt-2 text-red-600 font-bold text-sm">{error}</div>
           )}
-          {audioUrl && (
+          {audioUrl && !videoUrl && (
             <div className="mt-4 flex flex-col items-center w-full">
               <audio
                 ref={audioRef}
@@ -403,6 +452,42 @@ export default function Home() {
                 className="mb-2 w-full rounded shadow border border-gray-200"
               />
               <div className="flex gap-2">
+                <button
+                  className="inline-block bg-blue-200 hover:bg-blue-300 text-blue-900 px-4 py-2 rounded font-semibold shadow transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  onClick={handlePlay}
+                  disabled={isPlaying}
+                >
+                  ▶️ 再生
+                </button>
+                <button
+                  className="inline-block bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded font-semibold shadow transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-gray-100"
+                  onClick={handlePause}
+                  disabled={!isPlaying}
+                >
+                  ⏸️ 一時停止
+                </button>
+                <button
+                  className="inline-block bg-green-200 hover:bg-green-300 text-green-900 px-4 py-2 rounded shadow font-semibold transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-green-100 disabled:opacity-50"
+                  onClick={handleDownload}
+                  disabled={!!loading || segments.length === 0}
+                >
+                  文字起こしをダウンロード
+                </button>
+              </div>
+            </div>
+          )}
+          {videoUrl && (
+            <div className="mt-4 flex flex-col items-center w-full">
+              <div className="flex justify-center items-center w-full" style={{ minHeight: "200px" }}>
+                <video
+                  ref={videoRef}
+                  src={videoUrl}
+                  controls
+                  className="mb-2"
+                  style={{ maxHeight: "360px", maxWidth: "100%", height: "auto", width: "auto", display: "block" }}
+                />
+              </div>
+              <div className="flex gap-2 mt-2">
                 <button
                   className="inline-block bg-blue-200 hover:bg-blue-300 text-blue-900 px-4 py-2 rounded font-semibold shadow transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-blue-100"
                   onClick={handlePlay}
