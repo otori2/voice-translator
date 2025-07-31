@@ -403,7 +403,7 @@ export default function Home() {
               <button
                 className="bg-rose-200 hover:bg-rose-300 text-rose-900 px-4 py-2 rounded font-semibold shadow disabled:opacity-50 transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-rose-100 w-full"
                 onClick={handleUpload}
-                disabled={!!loading || (!audioFile && !transcriptFile)}
+                disabled={!!loading || (!audioFile && !transcriptFile) || !!videoFile}
               >
                 {loading ? "処理中..." : "文字起こし&翻訳実行"}
               </button>
@@ -415,7 +415,7 @@ export default function Home() {
                 🧹 クリア
               </button>
               <div className="text-xs text-gray-600 text-center min-h-[1.5em] w-full">
-                {audioFile?.name || ""}
+                {audioFile?.name || videoFile?.name || ""}
               </div>
               <div className="text-xs text-gray-600 text-center min-h-[1.5em] w-full">
                 {transcriptFile?.name || ""}
