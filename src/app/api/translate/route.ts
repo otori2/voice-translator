@@ -3,22 +3,33 @@ import { NextRequest, NextResponse } from "next/server";
 
 type TranslationEngine = "openai" | "google";
 
-async function translateWithOpenAI(text: string) {
-  const apiKey = process.env.OPENAI_API_KEY;
+// OpenAI設定の型定義
+interface OpenAIConfig {
+  apiKey: string;
+  endpoint: string;
+  modelName: string;
+}
+
+async function translateWithOpenAI(text: string, config?: OpenAIConfig) {
+  // 設定の優先順位: フロントエンド設定 > 環境変数 > デフォルト値
+  const apiKey = config?.apiKey || process.env.OPENAI_API_KEY;
+  const endpoint = config?.endpoint || process.env.ENDPOINT || "https://api.openai.com";
+  const model = config?.modelName || process.env.MODEL_NAME || "gpt-4.1-mini";
+  
   if (!apiKey) {
     throw new Error("OpenAI APIキーが設定されていません。");
   }
 
   const input = `あなたは優秀な英日翻訳者です。与えられた英語テキストを自然な日本語に翻訳してください。\n\n${text}`;
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
+  const response = await fetch(`${endpoint}/v1/responses`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: 'gpt-4.1-mini',
+      model,
       input,
     }),
   });
@@ -39,9 +50,10 @@ async function translateWithGoogle(text: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { text, engine = "openai" } = (await req.json()) as {
+    const { text, engine = "openai", openaiConfig } = (await req.json()) as {
       text: string;
       engine?: TranslationEngine;
+      openaiConfig?: OpenAIConfig;
     };
 
     if (!text) {
@@ -55,7 +67,7 @@ export async function POST(req: NextRequest) {
     if (engine === "google") {
       translation = await translateWithGoogle(text);
     } else {
-      translation = await translateWithOpenAI(text);
+      translation = await translateWithOpenAI(text, openaiConfig);
     }
 
     return NextResponse.json({ translation });

@@ -3,22 +3,44 @@ import { Buffer } from "buffer";
 import { Blob as NodeBlob, FormData as NodeFormData } from "formdata-node";
 import { NextRequest, NextResponse } from "next/server";
 
-export async function POST(req: NextRequest) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "OpenAI APIキーが設定されていません。" },
-      { status: 500 },
-    );
-  }
+// OpenAI設定の型定義
+interface OpenAIConfig {
+  apiKey: string;
+  endpoint: string;
+  modelName: string;
+}
 
+export async function POST(req: NextRequest) {
   // multipart/form-dataのパース
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
+  const openaiConfigStr = formData.get("openaiConfig") as string | null;
+  
   if (!file) {
     return NextResponse.json(
       { error: "音声ファイルがありません。" },
       { status: 400 },
+    );
+  }
+
+  // OpenAI設定の解析
+  let openaiConfig: OpenAIConfig | undefined;
+  if (openaiConfigStr) {
+    try {
+      openaiConfig = JSON.parse(openaiConfigStr);
+    } catch (e) {
+      console.warn("OpenAI設定の解析に失敗しました:", e);
+    }
+  }
+
+  // 設定の優先順位: フロントエンド設定 > 環境変数 > デフォルト値
+  const apiKey = openaiConfig?.apiKey || process.env.OPENAI_API_KEY;
+  const endpoint = openaiConfig?.endpoint || process.env.ENDPOINT || "https://api.openai.com";
+  
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: "OpenAI APIキーが設定されていません。" },
+      { status: 500 },
     );
   }
 
@@ -32,7 +54,7 @@ export async function POST(req: NextRequest) {
   form.append("response_format", "verbose_json");
 
   const response = await fetch(
-    "https://api.openai.com/v1/audio/transcriptions",
+    `${endpoint}/v1/audio/transcriptions`,
     {
       method: "POST",
       headers: {

@@ -15,6 +15,13 @@ type TranslationEngine = "openai" | "google";
 interface TranslateResponse { translation: string; error?: string; }
 interface TranscribeResponse { transcript: string; segments?: Segment[]; error?: string; }
 
+// OpenAI設定の型定義
+interface OpenAIConfig {
+  apiKey: string;
+  endpoint: string;
+  modelName: string;
+}
+
 export default function Home() {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioUrl, setAudioUrl] = useState<string>("");
@@ -33,11 +40,73 @@ export default function Home() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState<number | null>(null);
   const [error, setError] = useState<string>("");
+  
+  // 設定パネルの状態
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [openAIConfig, setOpenAIConfig] = useState<OpenAIConfig>({
+    apiKey: "",
+    endpoint: "https://api.openai.com",
+    modelName: "gpt-4.1-mini"
+  });
+  
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null); // 動画用ref
   const audioInputRef = useRef<HTMLInputElement>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
   const sentenceRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  // セッションストレージから設定を読み込み、環境変数の値をデフォルトとして設定
+  useEffect(() => {
+    const savedConfig = sessionStorage.getItem('openai-config');
+    if (savedConfig) {
+      setOpenAIConfig(JSON.parse(savedConfig));
+    } else {
+      // 環境変数の値をデフォルトとして設定
+      const defaultConfig = {
+        apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY || "",
+        endpoint: process.env.NEXT_PUBLIC_ENDPOINT || "https://api.openai.com",
+        modelName: process.env.NEXT_PUBLIC_MODEL_NAME || "gpt-4.1-mini"
+      };
+      setOpenAIConfig(defaultConfig);
+      sessionStorage.setItem('openai-config', JSON.stringify(defaultConfig));
+    }
+  }, []);
+
+  // 設定パネル外クリックでパネルを閉じる
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (isSettingsOpen && !target.closest('.settings-panel') && !target.closest('.hamburger-button')) {
+        setIsSettingsOpen(false);
+      }
+    };
+
+    if (isSettingsOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isSettingsOpen]);
+
+  // 設定変更時にセッションストレージに保存
+  const updateOpenAIConfig = (newConfig: Partial<OpenAIConfig>) => {
+    const updatedConfig = { ...openAIConfig, ...newConfig };
+    setOpenAIConfig(updatedConfig);
+    sessionStorage.setItem('openai-config', JSON.stringify(updatedConfig));
+  };
+
+  // 設定をリセット
+  const resetOpenAIConfig = () => {
+    const defaultConfig = {
+      apiKey: "",
+      endpoint: "https://api.openai.com",
+      modelName: "gpt-4.1-mini"
+    };
+    setOpenAIConfig(defaultConfig);
+    sessionStorage.setItem('openai-config', JSON.stringify(defaultConfig));
+  };
 
   // 英語セグメント
   const transcriptSentences =
@@ -160,6 +229,7 @@ export default function Home() {
           body: JSON.stringify({
             text: newSegs[i].text,
             engine: translationEngine,
+            openaiConfig: openAIConfig, // 設定を送信
           }),
         });
         const data: TranslateResponse = await res.json();
@@ -195,6 +265,7 @@ export default function Home() {
         const formData = new FormData();
         if (audioFile) formData.append("file", audioFile);
         if (videoFile) formData.append("file", videoFile);
+        formData.append("openaiConfig", JSON.stringify(openAIConfig)); // 設定を送信
         const res = await fetch("/api/transcribe", {
           method: "POST",
           body: formData,
@@ -216,7 +287,11 @@ export default function Home() {
         const res = await fetch("/api/translate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: transcriptText, engine: translationEngine }),
+          body: JSON.stringify({ 
+            text: transcriptText, 
+            engine: translationEngine,
+            openaiConfig: openAIConfig // 設定を送信
+          }),
         });
         const data: TranslateResponse = await res.json();
         if (data.error) throw new Error(data.error);
@@ -351,8 +426,19 @@ export default function Home() {
             <h1 className="text-2xl font-bold text-blue-gray-800 tracking-tight mx-auto">
               音声・動画翻訳アプリ
             </h1>
+            
+            {/* ハンバーガーメニュー */}
+            <button
+              onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+              className="hamburger-button absolute right-0 top-0 p-2 text-gray-600 hover:text-gray-800 transition-colors"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            
             {loading && (
-              <div className="flex items-center gap-2 ml-4 absolute right-0">
+              <div className="flex items-center gap-2 ml-4 absolute right-12">
                 <span className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></span>
                 <span className="text-blue-700 font-semibold text-base">
                   {loading === "transcribe" ? "文字起こし中..." : "翻訳中..."}
@@ -554,6 +640,94 @@ export default function Home() {
           </div>
         </div>
       </div>
+      
+      {/* OpenAI設定パネル（右側スライド） */}
+      <div className={`settings-panel fixed top-0 right-0 h-full w-80 bg-white shadow-lg transform transition-transform duration-300 ease-in-out z-50 ${isSettingsOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+        <div className="flex flex-col h-full">
+          {/* ヘッダー */}
+          <div className="flex justify-between items-center p-4 border-b border-gray-200">
+            <h2 className="text-xl font-bold text-gray-800">OpenAI設定</h2>
+            <button
+              onClick={() => setIsSettingsOpen(false)}
+              className="text-gray-500 hover:text-gray-700 p-1"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          
+          {/* 設定フォーム */}
+          <div className="flex-1 p-4 overflow-y-auto">
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  APIキー
+                </label>
+                <input
+                  type="password"
+                  value={openAIConfig.apiKey}
+                  onChange={(e) => updateOpenAIConfig({ apiKey: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="sk-..."
+                />
+                <p className="text-xs text-gray-500 mt-1">OpenAI APIキーを入力してください(sk-...)</p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  エンドポイント
+                </label>
+                <input
+                  type="url"
+                  value={openAIConfig.endpoint}
+                  onChange={(e) => updateOpenAIConfig({ endpoint: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="https://api.openai.com"
+                />
+                <p className="text-xs text-gray-500 mt-1">OpenAI APIのエンドポイントURL</p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  モデル名
+                </label>
+                <input
+                  type="text"
+                  value={openAIConfig.modelName}
+                  onChange={(e) => updateOpenAIConfig({ modelName: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="gpt-4.1-mini"
+                />
+                <p className="text-xs text-gray-500 mt-1">使用するOpenAIモデル名</p>
+              </div>
+            </div>
+          </div>
+          
+          {/* フッター */}
+          <div className="p-4 border-t border-gray-200">
+            <div className="flex justify-between">
+              <button
+                onClick={resetOpenAIConfig}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+              >
+                リセット
+              </button>
+              <button
+                onClick={() => setIsSettingsOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* オーバーレイ */}
+      {isSettingsOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-25 z-40" onClick={() => setIsSettingsOpen(false)}></div>
+      )}
     </main>
   );
 }
