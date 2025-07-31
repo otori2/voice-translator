@@ -531,10 +531,16 @@ export default function Home() {
                 <div
                   className={`w-1/2 pr-2 ${highlightIndex === idx && isPlaying ? 'bg-yellow-100 text-black font-bold rounded transition-colors shadow' : ''} ${segments[idx] ? 'cursor-pointer hover:bg-blue-100' : ''}`}
                   onClick={() => {
-                    if (segments[idx] && audioRef.current) {
-                      audioRef.current.currentTime = segments[idx].start;
-                      audioRef.current.play();
-                      setIsPlaying(true);
+                    if (segments[idx]) {
+                      if (videoUrl && videoRef.current) {
+                        videoRef.current.currentTime = segments[idx].start;
+                        videoRef.current.play();
+                        setIsPlaying(true);
+                      } else if (audioRef.current) {
+                        audioRef.current.currentTime = segments[idx].start;
+                        audioRef.current.play();
+                        setIsPlaying(true);
+                      }
                     }
                   }}
                 >
