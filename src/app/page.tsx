@@ -220,21 +220,23 @@ export default function Home() {
     setError("");
     const newSegs = [...segs];
     for (let i = 0; i < newSegs.length; i++) {
-      if (newSegs[i].ja && newSegs[i].ja.length > 0) continue;
+      const segment = newSegs[i];
+      if (!segment) continue;
+      if (segment.ja && segment.ja.length > 0) continue;
       try {
         // 1文ずつ翻訳
         const res = await fetch("/api/translate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            text: newSegs[i].text,
+            text: segment.text,
             engine: translationEngine,
             openaiConfig: openAIConfig, // 設定を送信
           }),
         });
         const data: TranslateResponse = await res.json();
         if (data.error) throw new Error(data.error);
-        newSegs[i].ja = data.translation;
+        segment.ja = data.translation;
         setSegments([...newSegs]); // 進捗表示のため都度更新
       } catch (e) {
         setError(e instanceof Error ? e.message : "エラーが発生しました");
