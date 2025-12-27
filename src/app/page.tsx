@@ -9,18 +9,39 @@ interface Segment {
   ja?: string;
 }
 
-type TranslationEngine = "openai" | "google";
+type TranslationEngine = "openai" | "google" | "ollama";
 
 // fetchの戻り値型を明示
 interface TranslateResponse { translation: string; error?: string; }
 interface TranscribeResponse { transcript: string; segments?: Segment[]; error?: string; }
 
-// OpenAI設定の型定義
-interface OpenAIConfig {
+// 設定の型定義
+interface TranscribeConfig {
   apiKey: string;
   endpoint: string;
   modelName: string;
 }
+
+interface TranslateOpenAIConfig {
+  apiKey: string;
+  endpoint: string;
+  modelName: string;
+}
+
+interface TranslateOllamaConfig {
+  endpoint: string;
+  modelName: string;
+  apiKey?: string;
+}
+
+const safeJsonParse = async (res: Response) => {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(text || "APIから空のレスポンスを受信しました。");
+  }
+};
 
 export default function Home() {
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -43,10 +64,20 @@ export default function Home() {
   
   // 設定パネルの状態
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [openAIConfig, setOpenAIConfig] = useState<OpenAIConfig>({
+  const [transcribeConfig, setTranscribeConfig] = useState<TranscribeConfig>({
     apiKey: "",
     endpoint: "https://api.openai.com",
-    modelName: "gpt-4.1-mini"
+    modelName: "whisper-1"
+  });
+  const [translateOpenAIConfig, setTranslateOpenAIConfig] = useState<TranslateOpenAIConfig>({
+    apiKey: "",
+    endpoint: "https://api.openai.com",
+    modelName: "gpt-5-nano"
+  });
+  const [translateOllamaConfig, setTranslateOllamaConfig] = useState<TranslateOllamaConfig>({
+    endpoint: "http://localhost:11434",
+    modelName: "llama3.1:8b",
+    apiKey: ""
   });
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -57,18 +88,46 @@ export default function Home() {
 
   // セッションストレージから設定を読み込み、環境変数の値をデフォルトとして設定
   useEffect(() => {
-    const savedConfig = sessionStorage.getItem('openai-config');
-    if (savedConfig) {
-      setOpenAIConfig(JSON.parse(savedConfig));
+    // 文字起こし設定
+    const savedTranscribe = sessionStorage.getItem("transcribe-config");
+    if (savedTranscribe) {
+      setTranscribeConfig(JSON.parse(savedTranscribe));
     } else {
-      // 環境変数の値をデフォルトとして設定
-      const defaultConfig = {
-        apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY || "",
-        endpoint: process.env.NEXT_PUBLIC_ENDPOINT || "https://api.openai.com",
-        modelName: process.env.NEXT_PUBLIC_MODEL_NAME || "gpt-4.1-mini"
+      const defaultTranscribe = {
+        apiKey: process.env.NEXT_PUBLIC_TRANSCRIBE_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY || "",
+        endpoint: process.env.NEXT_PUBLIC_TRANSCRIBE_ENDPOINT || process.env.NEXT_PUBLIC_ENDPOINT || "https://api.openai.com",
+        modelName: process.env.NEXT_PUBLIC_TRANSCRIBE_MODEL_NAME || "whisper-1",
       };
-      setOpenAIConfig(defaultConfig);
-      sessionStorage.setItem('openai-config', JSON.stringify(defaultConfig));
+      setTranscribeConfig(defaultTranscribe);
+      sessionStorage.setItem("transcribe-config", JSON.stringify(defaultTranscribe));
+    }
+
+    // 翻訳(OpenAI/互換)設定
+    const savedTranslateOpenAI = sessionStorage.getItem("translate-openai-config");
+    if (savedTranslateOpenAI) {
+      setTranslateOpenAIConfig(JSON.parse(savedTranslateOpenAI));
+    } else {
+      const defaultOpenAI = {
+        apiKey: process.env.NEXT_PUBLIC_TRANSLATE_OPENAI_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY || "",
+        endpoint: process.env.NEXT_PUBLIC_TRANSLATE_OPENAI_ENDPOINT || process.env.NEXT_PUBLIC_ENDPOINT || "https://api.openai.com",
+        modelName: process.env.NEXT_PUBLIC_TRANSLATE_OPENAI_MODEL_NAME || process.env.NEXT_PUBLIC_MODEL_NAME || "gpt-5-nano",
+      };
+      setTranslateOpenAIConfig(defaultOpenAI);
+      sessionStorage.setItem("translate-openai-config", JSON.stringify(defaultOpenAI));
+    }
+
+    // 翻訳(Ollama)設定
+    const savedTranslateOllama = sessionStorage.getItem("translate-ollama-config");
+    if (savedTranslateOllama) {
+      setTranslateOllamaConfig(JSON.parse(savedTranslateOllama));
+    } else {
+      const defaultOllama = {
+        endpoint: process.env.NEXT_PUBLIC_TRANSLATE_OLLAMA_ENDPOINT || "http://localhost:11434",
+        modelName: process.env.NEXT_PUBLIC_TRANSLATE_OLLAMA_MODEL_NAME || "llama3.1:8b",
+        apiKey: process.env.NEXT_PUBLIC_TRANSLATE_OLLAMA_API_KEY || "",
+      };
+      setTranslateOllamaConfig(defaultOllama);
+      sessionStorage.setItem("translate-ollama-config", JSON.stringify(defaultOllama));
     }
   }, []);
 
@@ -91,21 +150,55 @@ export default function Home() {
   }, [isSettingsOpen]);
 
   // 設定変更時にセッションストレージに保存
-  const updateOpenAIConfig = (newConfig: Partial<OpenAIConfig>) => {
-    const updatedConfig = { ...openAIConfig, ...newConfig };
-    setOpenAIConfig(updatedConfig);
-    sessionStorage.setItem('openai-config', JSON.stringify(updatedConfig));
+  const updateTranscribeConfig = (newConfig: Partial<TranscribeConfig>) => {
+    const updated = { ...transcribeConfig, ...newConfig };
+    setTranscribeConfig(updated);
+    sessionStorage.setItem("transcribe-config", JSON.stringify(updated));
   };
-
-  // 設定をリセット
-  const resetOpenAIConfig = () => {
-    const defaultConfig = {
+  const resetTranscribeConfig = () => {
+    const defaults = {
       apiKey: "",
       endpoint: "https://api.openai.com",
-      modelName: "gpt-4.1-mini"
+      modelName: "whisper-1",
     };
-    setOpenAIConfig(defaultConfig);
-    sessionStorage.setItem('openai-config', JSON.stringify(defaultConfig));
+    setTranscribeConfig(defaults);
+    sessionStorage.setItem("transcribe-config", JSON.stringify(defaults));
+  };
+
+  const updateTranslateOpenAIConfig = (newConfig: Partial<TranslateOpenAIConfig>) => {
+    const updated = { ...translateOpenAIConfig, ...newConfig };
+    setTranslateOpenAIConfig(updated);
+    sessionStorage.setItem("translate-openai-config", JSON.stringify(updated));
+  };
+  const resetTranslateOpenAIConfig = () => {
+    const defaults = {
+      apiKey: "",
+      endpoint: "https://api.openai.com",
+      modelName: "gpt-5-nano",
+    };
+    setTranslateOpenAIConfig(defaults);
+    sessionStorage.setItem("translate-openai-config", JSON.stringify(defaults));
+  };
+
+  const updateTranslateOllamaConfig = (newConfig: Partial<TranslateOllamaConfig>) => {
+    const updated = { ...translateOllamaConfig, ...newConfig };
+    setTranslateOllamaConfig(updated);
+    sessionStorage.setItem("translate-ollama-config", JSON.stringify(updated));
+  };
+  const resetTranslateOllamaConfig = () => {
+    const defaults = {
+      endpoint: "http://localhost:11434",
+      modelName: "llama3.1:8b",
+      apiKey: "",
+    };
+    setTranslateOllamaConfig(defaults);
+    sessionStorage.setItem("translate-ollama-config", JSON.stringify(defaults));
+  };
+
+  const resetAllConfigs = () => {
+    resetTranscribeConfig();
+    resetTranslateOpenAIConfig();
+    resetTranslateOllamaConfig();
   };
 
   // 英語セグメント
@@ -231,10 +324,11 @@ export default function Home() {
           body: JSON.stringify({
             text: segment.text,
             engine: translationEngine,
-            openaiConfig: openAIConfig, // 設定を送信
+            openaiConfig: translateOpenAIConfig,
+            ollamaConfig: translateOllamaConfig,
           }),
         });
-        const data: TranslateResponse = await res.json();
+        const data: TranslateResponse = await safeJsonParse(res);
         if (data.error) throw new Error(data.error);
         segment.ja = data.translation;
         setSegments([...newSegs]); // 進捗表示のため都度更新
@@ -267,12 +361,12 @@ export default function Home() {
         const formData = new FormData();
         if (audioFile) formData.append("file", audioFile);
         if (videoFile) formData.append("file", videoFile);
-        formData.append("openaiConfig", JSON.stringify(openAIConfig)); // 設定を送信
+        formData.append("transcribeConfig", JSON.stringify(transcribeConfig)); // 設定を送信
         const res = await fetch("/api/transcribe", {
           method: "POST",
           body: formData,
         });
-        const data: TranscribeResponse = await res.json();
+        const data: TranscribeResponse = await safeJsonParse(res);
         if (data.error) throw new Error(data.error);
         transcriptText = data.transcript;
         setTranscript(data.transcript);
@@ -289,13 +383,14 @@ export default function Home() {
         const res = await fetch("/api/translate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            text: transcriptText, 
+          body: JSON.stringify({
+            text: transcriptText,
             engine: translationEngine,
-            openaiConfig: openAIConfig // 設定を送信
+            openaiConfig: translateOpenAIConfig,
+            ollamaConfig: translateOllamaConfig,
           }),
         });
-        const data: TranslateResponse = await res.json();
+        const data: TranslateResponse = await safeJsonParse(res);
         if (data.error) throw new Error(data.error);
         setTranslation(data.translation);
       }
@@ -448,7 +543,7 @@ export default function Home() {
               </div>
             )}
           </div>
-          <div className="flex justify-center mb-4 space-x-4">
+          <div className="flex justify-center mb-4 space-x-4 flex-wrap">
             <label className="flex items-center space-x-2 cursor-pointer">
               <input
                 type="radio"
@@ -458,7 +553,18 @@ export default function Home() {
                 onChange={() => setTranslationEngine("openai")}
                 className="form-radio h-4 w-4 text-blue-600"
               />
-              <span className="text-gray-700">OpenAI (高精度)</span>
+              <span className="text-gray-700">OpenAI互換 (高精度)</span>
+            </label>
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="radio"
+                name="translationEngine"
+                value="ollama"
+                checked={translationEngine === "ollama"}
+                onChange={() => setTranslationEngine("ollama")}
+                className="form-radio h-4 w-4 text-orange-600"
+              />
+              <span className="text-gray-700">Ollama (ローカル)</span>
             </label>
             <label className="flex items-center space-x-2 cursor-pointer">
               <input
@@ -643,12 +749,12 @@ export default function Home() {
         </div>
       </div>
       
-      {/* OpenAI設定パネル（右側スライド） */}
+      {/* 設定パネル（右側スライド） */}
       <div className={`settings-panel fixed top-0 right-0 h-full w-80 bg-white shadow-lg transform transition-transform duration-300 ease-in-out z-50 ${isSettingsOpen ? 'translate-x-0' : 'translate-x-full'}`}>
         <div className="flex flex-col h-full">
           {/* ヘッダー */}
           <div className="flex justify-between items-center p-4 border-b border-gray-200">
-            <h2 className="text-xl font-bold text-gray-800">OpenAI設定</h2>
+            <h2 className="text-xl font-bold text-gray-800">設定</h2>
             <button
               onClick={() => setIsSettingsOpen(false)}
               className="text-gray-500 hover:text-gray-700 p-1"
@@ -661,47 +767,128 @@ export default function Home() {
           
           {/* 設定フォーム */}
           <div className="flex-1 p-4 overflow-y-auto">
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  APIキー
-                </label>
-                <input
-                  type="password"
-                  value={openAIConfig.apiKey}
-                  onChange={(e) => updateOpenAIConfig({ apiKey: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="sk-..."
-                />
-                <p className="text-xs text-gray-500 mt-1">OpenAI APIキーを入力してください(sk-...)</p>
+            <div className="space-y-8">
+              {/* 文字起こし設定 */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-gray-800">文字起こし (OpenAI互換 Whisper)</h3>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    APIキー
+                  </label>
+                  <input
+                    type="password"
+                    value={transcribeConfig.apiKey}
+                    onChange={(e) => updateTranscribeConfig({ apiKey: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="sk-..."
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    エンドポイント
+                  </label>
+                  <input
+                    type="url"
+                    value={transcribeConfig.endpoint}
+                    onChange={(e) => updateTranscribeConfig({ endpoint: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="https://api.openai.com"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    モデル名
+                  </label>
+                  <input
+                    type="text"
+                    value={transcribeConfig.modelName}
+                    onChange={(e) => updateTranscribeConfig({ modelName: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="whisper-1"
+                  />
+                </div>
               </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  エンドポイント
-                </label>
-                <input
-                  type="url"
-                  value={openAIConfig.endpoint}
-                  onChange={(e) => updateOpenAIConfig({ endpoint: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="https://api.openai.com"
-                />
-                <p className="text-xs text-gray-500 mt-1">OpenAI APIのエンドポイントURL</p>
+
+              {/* 翻訳(OpenAI互換) */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-gray-800">翻訳 (OpenAI互換)</h3>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    APIキー
+                  </label>
+                  <input
+                    type="password"
+                    value={translateOpenAIConfig.apiKey}
+                    onChange={(e) => updateTranslateOpenAIConfig({ apiKey: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="sk-..."
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    エンドポイント
+                  </label>
+                  <input
+                    type="url"
+                    value={translateOpenAIConfig.endpoint}
+                    onChange={(e) => updateTranslateOpenAIConfig({ endpoint: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="https://api.openai.com"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    モデル名
+                  </label>
+                  <input
+                    type="text"
+                    value={translateOpenAIConfig.modelName}
+                    onChange={(e) => updateTranslateOpenAIConfig({ modelName: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="gpt-4.1-mini"
+                  />
+                </div>
               </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  モデル名
-                </label>
-                <input
-                  type="text"
-                  value={openAIConfig.modelName}
-                  onChange={(e) => updateOpenAIConfig({ modelName: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="gpt-4.1-mini"
-                />
-                <p className="text-xs text-gray-500 mt-1">使用するOpenAIモデル名</p>
+
+              {/* 翻訳(Ollama) */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-gray-800">翻訳 (Ollama)</h3>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    エンドポイント
+                  </label>
+                  <input
+                    type="url"
+                    value={translateOllamaConfig.endpoint}
+                    onChange={(e) => updateTranslateOllamaConfig({ endpoint: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="http://localhost:11434"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    モデル名
+                  </label>
+                  <input
+                    type="text"
+                    value={translateOllamaConfig.modelName}
+                    onChange={(e) => updateTranslateOllamaConfig({ modelName: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="llama3.1:8b"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    APIキー (任意・プロキシ利用時)
+                  </label>
+                  <input
+                    type="password"
+                    value={translateOllamaConfig.apiKey || ""}
+                    onChange={(e) => updateTranslateOllamaConfig({ apiKey: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="(通常は不要)"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -710,10 +897,10 @@ export default function Home() {
           <div className="p-4 border-t border-gray-200">
             <div className="flex justify-between">
               <button
-                onClick={resetOpenAIConfig}
+                onClick={resetAllConfigs}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
               >
-                リセット
+                全てリセット
               </button>
               <button
                 onClick={() => setIsSettingsOpen(false)}
