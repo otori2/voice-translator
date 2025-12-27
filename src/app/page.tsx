@@ -34,6 +34,71 @@ interface TranslateOllamaConfig {
   apiKey?: string;
 }
 
+const padTime = (value: number, length: number) => value.toString().padStart(length, "0");
+
+const formatSrtTimestamp = (seconds: number) => {
+  const totalMs = Math.max(0, Math.round(seconds * 1000));
+  const ms = totalMs % 1000;
+  const totalSeconds = Math.floor(totalMs / 1000);
+  const s = totalSeconds % 60;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const m = totalMinutes % 60;
+  const h = Math.floor(totalMinutes / 60);
+  return `${padTime(h, 2)}:${padTime(m, 2)}:${padTime(s, 2)},${padTime(ms, 3)}`;
+};
+
+const parseSrtTimestamp = (value: string) => {
+  const match = value.trim().match(/^(\d+):(\d{2}):(\d{2}),(\d{3})$/);
+  if (!match) return null;
+  const [, h, m, s, ms] = match;
+  return Number(h) * 3600 + Number(m) * 60 + Number(s) + Number(ms) / 1000;
+};
+
+const parseSrt = (text: string): Segment[] => {
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const blocks = normalized.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
+  const segments: Segment[] = [];
+  for (const block of blocks) {
+    const lines = block.split("\n").map((line) => line.trimEnd());
+    if (lines.length < 2) continue;
+    let idx = 0;
+    if (/^\d+$/.test(lines[idx])) idx += 1;
+    const timeLineIndex = lines.findIndex((line, i) => i >= idx && line.includes("-->"));
+    if (timeLineIndex === -1) continue;
+    const timeLine = lines[timeLineIndex];
+    const [startRaw, endRaw] = timeLine.split("-->").map((part) => part.trim());
+    const start = parseSrtTimestamp(startRaw);
+    const end = parseSrtTimestamp(endRaw);
+    if (start === null || end === null) continue;
+    const textLines = lines.slice(timeLineIndex + 1).filter((line) => line.length > 0);
+    const english = textLines[0] || "";
+    const japanese = textLines.length > 1 ? textLines.slice(1).join(" ") : "";
+    segments.push({
+      id: segments.length,
+      start,
+      end,
+      text: english,
+      ja: japanese,
+    });
+  }
+  return segments;
+};
+
+const buildSrt = (segs: Segment[]) => {
+  return segs
+    .map((seg, index) => {
+      const lines = [
+        String(index + 1),
+        `${formatSrtTimestamp(seg.start)} --> ${formatSrtTimestamp(seg.end)}`,
+        seg.text || "",
+        seg.ja || "",
+        "",
+      ];
+      return lines.join("\n");
+    })
+    .join("\n");
+};
+
 const safeJsonParse = async (res: Response) => {
   const text = await res.text();
   try {
@@ -252,18 +317,17 @@ export default function Home() {
     }
   };
 
-  // 文字起こしテキストのダウンロード（TSV形式: start\tend\ttext\tja）
+  // 文字起こしテキストのダウンロード（SRT形式）
   const handleDownload = () => {
     let content = '';
     if (segments.length > 0) {
-      content = segments.map(seg => `${seg.start}\t${seg.end}\t${seg.text}\t${seg.ja || ''}`).join('\n');
-    } else if (transcript) {
-      content = transcript;
+      content = buildSrt(segments);
     }
-    // 音声ファイル名をベースに拡張子だけ.txtに
-    let filename = 'transcript.txt';
-    if (audioFile?.name) {
-      filename = audioFile.name.replace(/\.[^.]+$/, '') + '.txt';
+    // 音声/動画ファイル名をベースに拡張子だけ.srtに
+    let filename = 'transcript.srt';
+    if (audioFile?.name || videoFile?.name) {
+      const base = (audioFile?.name || videoFile?.name || "").replace(/\.[^.]+$/, '');
+      filename = `${base}.srt`;
     }
     const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
@@ -276,30 +340,18 @@ export default function Home() {
     URL.revokeObjectURL(url);
   };
 
-  // 文字起こしテキスト選択（TSV形式ならsegments復元）
+  // 文字起こしテキスト選択（SRT形式ならsegments復元）
   const handleTranscriptChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setTranscriptFile(e.target.files[0]);
       const text = await e.target.files[0].text();
-      // TSV形式判定
-      const lines = text.split(/\r?\n/);
-      if (lines.length > 0 && lines[0].split("\t").length >= 3) {
-        // segments復元
-        const segs = lines.map((line, idx) => {
-          const cols = line.split("\t");
-          return {
-            id: idx,
-            start: parseFloat(cols[0]),
-            end: parseFloat(cols[1]),
-            text: cols[2],
-            ja: cols[3] || "",
-          };
-        });
+      const segs = parseSrt(text);
+      if (segs.length > 0) {
         setSegments(segs);
         setTranscript(segs.map((s) => s.text).join(" "));
-        setTranslation(segs.map((s) => s.ja).join(" "));
+        setTranslation(segs.map((s) => s.ja || "").join(" "));
       } else {
-        // 旧形式
+        // 旧形式 (plain text)
         setSegments([]);
         setTranscript(text);
         setTranslation("");
@@ -353,6 +405,17 @@ export default function Home() {
       // 文字起こしテキストがあればそれを使う
       if (transcriptFile) {
         const text = await transcriptFile.text();
+        const parsed = segments.length > 0 ? segments : parseSrt(text);
+        if (parsed.length > 0) {
+          setSegments(parsed);
+          setTranscript(parsed.map((s) => s.text).join(" "));
+          setTranslation(parsed.map((s) => s.ja || "").join(" "));
+          const hasMissingJa = parsed.some((s) => !s.ja || s.ja.length === 0);
+          if (hasMissingJa) {
+            await translateSegments(parsed);
+          }
+          return;
+        }
         transcriptText = text;
         setTranscript(text);
         setLoading("translate");
@@ -589,11 +652,11 @@ export default function Home() {
               </button>
               <button
                 type="button"
-                onClick={() => textInputRef.current?.click()}
-                className="bg-gray-200 text-gray-800 font-semibold py-2 px-3 rounded shadow hover:bg-gray-300 transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-gray-100 w-full"
-              >
-                📄 テキストファイルを選択
-              </button>
+            onClick={() => textInputRef.current?.click()}
+            className="bg-gray-200 text-gray-800 font-semibold py-2 px-3 rounded shadow hover:bg-gray-300 transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-gray-100 w-full"
+          >
+            📄 SRTファイルを選択
+          </button>
               <button
                 className="bg-rose-200 hover:bg-rose-300 text-rose-900 px-4 py-2 rounded font-semibold shadow disabled:opacity-50 transition-colors duration-150 text-base focus:outline-none focus:ring-2 focus:ring-rose-100 w-full"
                 onClick={handleUpload}
@@ -627,7 +690,7 @@ export default function Home() {
             />
             <input
               type="file"
-              accept=".txt"
+              accept=".srt"
               ref={textInputRef}
               onChange={handleTranscriptChange}
               className="hidden"
