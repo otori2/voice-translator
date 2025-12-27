@@ -66,14 +66,18 @@ async function translateWithOpenAI(text: string, config?: OpenAIConfig) {
     throw new Error(`OpenAI APIエラー: ${textResp}`);
   }
 
-  let data: any = {};
+  let data: unknown = {};
   try {
     data = JSON.parse(textResp);
   } catch {
     throw new Error(`OpenAIレスポンスのJSON解析に失敗: ${textResp}`);
   }
 
-  return data.output_text || (Array.isArray(data.output) && data.output[0]?.content?.[0]?.text) || '';
+  const parsed = data as {
+    output_text?: string;
+    output?: Array<{ content?: Array<{ text?: string }> }>;
+  };
+  return parsed.output_text || (Array.isArray(parsed.output) && parsed.output[0]?.content?.[0]?.text) || '';
 }
 
 async function translateWithOllama(text: string, config?: OllamaConfig) {
@@ -108,13 +112,14 @@ async function translateWithOllama(text: string, config?: OllamaConfig) {
     throw new Error(`Ollama APIエラー: ${textResp}`);
   }
 
-  let data: any = {};
+  let data: unknown = {};
   try {
     data = JSON.parse(textResp) as { response?: string; output?: string };
   } catch {
     throw new Error(`OllamaレスポンスのJSON解析に失敗: ${textResp}`);
   }
-  return data.response || data.output || "";
+  const parsed = data as { response?: string; output?: string };
+  return parsed.response || parsed.output || "";
 }
 
 async function translateWithGoogle(text: string) {

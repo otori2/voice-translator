@@ -84,14 +84,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: text || "文字起こしAPIエラー" }, { status: 500 });
     }
 
-    let data: any = {};
+    let data: unknown = {};
     try {
       data = JSON.parse(text);
     } catch {
       return NextResponse.json({ error: text || "文字起こしAPIのレスポンス解析に失敗しました。" }, { status: 500 });
     }
 
-    return NextResponse.json({ transcript: data.text, segments: data.segments });
+    const parsed = data as { text?: string; segments?: unknown };
+    return NextResponse.json({ transcript: parsed.text ?? "", segments: parsed.segments });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "外部API呼び出しに失敗しました。";
     return NextResponse.json({ error: msg }, { status: 500 });
